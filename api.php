@@ -1,12 +1,16 @@
 <?
+
 $cardNo = "";
 $amount = "";
 
 // Read RPOWER POST
 $rpXMLData = file_get_contents('php://input');
 
+// Load it in to simplexml for parsing
 $xml = simplexml_load_string($rpXMLData);
 $command = $xml->XyzzyHeader[0]['api_command'];
+
+// Making sure variables are set so no warnings come up
 
 if(isset($xml->CCX_QUERY->Parms[0]['trk1'])){
 $amtWtip = $xml->CCX_QUERY->Parms[0]['trk1'];
@@ -20,13 +24,23 @@ if(isset($xml->CCX_QUERY->Card[0]['num'])){
 $cardNo = $xml->CCX_QUERY->Card[0]['num'];
 }
 
+// What RPOWER command are we running?
 if ($command == "CHARGE") {
 redeem($cardNo, $amtWtip);
 }
 elseif ($command == "BALINQUIRY" || $command == "QUERY"){
 balance($cardNo);
 }
+
+elseif ($command == "SETTLE"){
+if(isset($xml->CCX_RESPONSE->Parms[0]['parm1'])){
+$cardNo = $xml->CCX_RESPONSE->Parms[0]['parm1'];
+}
+settle($parm1);
+}
+
 else {
+//RPOWER will display an error on the screen but we can't pass anything for it to display so just DIE.
 die();
 }
 
@@ -67,6 +81,8 @@ $response = str_replace('https://www.DigitalDining.com/GiftCertificate/', '', $o
 $xml = simplexml_load_string($response);
 $ret = $xml->xpath('//response');
 $balance = $ret[0]->Balance;
+// Bandaid for Menusoft's awful programming.... Sometimes you get a balance formatted like so.. 50.34302903420
+$balance = number_format((float)$balance,2,'.','');
 $parm1 = $balance*100;
 $date = date("Y-m-d")."T".date("G:i:sP");
 $tz = date("T");
@@ -120,6 +136,8 @@ $response = str_replace('https://www.DigitalDining.com/GiftCertificate/', '', $o
 $xml = simplexml_load_string($response);
 $ret = $xml->xpath('//response');
 $balance = $ret[0]->Balance;
+// Bandaid for Menusoft's awful programming.... Sometimes you get a balance formatted like so.. 50.34302903420
+$balance = number_format((float)$balance,2,'.','');
 
 // Format to RPOWER spec
 $date = date("Y-m-d")."T".date("G:i:sP");
@@ -138,4 +156,19 @@ echo "
 </XyzzyTalk>";
 }
 
+function settle($parm1) {
+// Format to RPOWER spec
+$date = date("Y-m-d")."T".date("G:i:sP");
+$tz = date("T");
+echo "
+<?xml version=\"1.0\"?>
+<XyzzyTalk>
+<XyzzyHeader xyzzy_version=\'6.10.29.4\' api_id=\'CUSCNX\' api_version=\'14.5.22.1\'
+             api_command=\'BALINQUIRY\' app_version=\'14010703\'
+             date_time=\'$date\' tz=\'$tz\'/>
+  <CCX_RESPONSE>
+      <Parms parm1=\'$parm1\'/>
+  </CCX_RESPONSE>
+</XyzzyTalk>";
+}
 ?>
